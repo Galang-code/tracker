@@ -7,10 +7,12 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        {/* Route lama (backward compat) */}
+        {/* Route /t/:trackId — format lama */}
         <Route path="/t/:trackId" element={<Capture />} />
-        {/* Route baru bertema: /berita/info-terkini/{encoded} */}
+        {/* Route bertema dua level: /berita/info-terkini/{encoded} */}
         <Route path="/:cat/:slug/:trackId" element={<Capture />} />
+        {/* Catch-all: apapun path-nya, coba decode segmen terakhir */}
+        <Route path="*" element={<Capture />} />
       </Routes>
     </BrowserRouter>
   )
