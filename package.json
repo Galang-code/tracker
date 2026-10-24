@@ -1,0 +1,63 @@
+{
+  "name": "tracklink",
+  "productName": "TrackLink",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TrackLink — Link Tracker Pro",
+  "type": "module",
+  "main": "electron.cjs",
+
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "set ELECTRON=true && vite build && electron-builder build --win --x64",
+
+    "electron:build:mac": "vite build && electron-builder build --mac",
+    "electron:build:linux": "vite build && electron-builder build --linux"
+  },
+  "build": {
+    "appId": "com.tracklink.app",
+    "productName": "TrackLink",
+    "files": [
+      "dist/**/*",
+      "electron.cjs"
+    ],
+
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/vite.svg"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities"
+    }
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4",
+    "uuid": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "oxlint": "^1.88.0",
+    "vite": "^8.3.4",
+    "wait-on": "^9.5.1"
+  }
+}
