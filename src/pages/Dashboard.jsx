@@ -42,10 +42,12 @@ export default function Dashboard() {
   function handleCreate() {
     const link = createLink({ name: linkName.trim() || undefined, decoyTheme: decoy, ...feats });
     setLinks(getLinks());
-    setGenUrl(`${base}/t/${link.encoded}`);
+    // URL bertema: /berita/info-terkini/{encoded}
+    setGenUrl(`${base}/${link.themePath}/${link.encoded}`);
     setLinkName('');
     setExpandedId(link.id);
   }
+
 
   function handleCopy(url) {
     navigator.clipboard.writeText(url);

