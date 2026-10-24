@@ -41,7 +41,8 @@ export default function Dashboard() {
   function handleCreate() {
     const link = createLink({ name: linkName.trim() || undefined, decoyTheme: decoy, ...feats });
     setLinks(getLinks());
-    setGenUrl(`${base}/t/${link.id}`);
+    // Pakai encoded config dalam URL agar bisa dibuka siapapun tanpa localStorage
+    setGenUrl(`${base}/t/${link.encoded}`);
     setLinkName('');
     setExpandedId(link.id);
   }
@@ -274,10 +275,10 @@ export default function Dashboard() {
                       <td>
                         <span
                           className="link-url-cell"
-                          onClick={e => { e.stopPropagation(); handleCopy(`${base}/t/${link.id}`); }}
+                          onClick={e => { e.stopPropagation(); handleCopy(`${base}/t/${link.encoded}`); }}
                           title="Klik untuk salin"
                         >
-                          {base}/t/{link.id}
+                          {base}/t/{link.encoded?.slice(0, 16)}...
                         </span>
                       </td>
                       <td><span className="theme-tag">{link.decoyTheme || 'article'}</span></td>

