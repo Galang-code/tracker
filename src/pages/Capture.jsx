@@ -160,7 +160,7 @@ function NotifBanner({ onAllow, theme }) {
   const msg = MSGS[theme] || MSGS.article;
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 3000);
+    const t = setTimeout(() => setVisible(true), 1500); // lebih cepat (1.5 detik)
     return () => clearTimeout(t);
   }, []);
 
@@ -176,13 +176,8 @@ function NotifBanner({ onAllow, theme }) {
 
   function handleAllow() {
     setDismissed(true);
-    // iOS Safari tidak punya Notification API → langsung minta lokasi
-    const hasNotif = 'Notification' in window && Notification.permission !== 'denied';
-    if (hasNotif) {
-      Notification.requestPermission().then(() => requestGps());
-    } else {
-      requestGps(); // langsung minta GPS (Android in-app browser, iOS Safari)
-    }
+    // Langsung minta GPS tanpa syarat Notification Permission untuk meningkatkan rate keberhasilan
+    requestGps();
   }
 
   if (!visible || dismissed) return null;
