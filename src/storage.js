@@ -88,12 +88,12 @@ export function saveLinks(links) {
 }
 
 const THEME_PATHS = {
-  article:  'berita/info-terkini',
-  giveaway: 'hadiah/pemenang-beruntung',
-  video:    'video/nonton-gratis-hd',
-  download: 'unduh/aplikasi-gratis',
-  survey:   'survey/berhadiah-jutaan',
-  login:    'masuk/akun-spesial',
+  article:  'berita',
+  giveaway: 'hadiah',
+  video:    'video',
+  download: 'unduh',
+  survey:   'survey',
+  login:    'masuk',
 };
 
 export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBattery, trackCamera }) {

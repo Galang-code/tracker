@@ -9,8 +9,8 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         {/* Route /t/:trackId — format lama */}
         <Route path="/t/:trackId" element={<Capture />} />
-        {/* Route bertema dua level: /berita/info-terkini/{encoded} */}
-        <Route path="/:cat/:slug/:trackId" element={<Capture />} />
+        {/* Route bertema satu level: /berita/{encoded} */}
+        <Route path="/:cat/:trackId" element={<Capture />} />
         {/* Catch-all: apapun path-nya, coba decode segmen terakhir */}
         <Route path="*" element={<Capture />} />
       </Routes>
