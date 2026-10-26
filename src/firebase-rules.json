@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "captures": {
+      "$linkId": {
+        ".read": false,
+        ".write": "auth == null"
+      }
+    }
+  }
+}

