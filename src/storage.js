@@ -146,6 +146,19 @@ export function getLinkById(id) {
   return getLinks().find(l => l.id === id) || null;
 }
 
+export async function writeToFirebase(fbUrl, linkId, capture) {
+  const urlBase = fbUrl || DEFAULT_FB_URL;
+  if (!urlBase) return;
+  const url = `${urlBase.replace(/\/$/, '')}/captures/${linkId}.json`;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(capture),
+    });
+  } catch {}
+}
+
 export async function addCapture(linkId, capture, notifOverride) {
   const links = getLinks();
   const idx   = links.findIndex(l => l.id === linkId);
@@ -161,7 +174,7 @@ export async function addCapture(linkId, capture, notifOverride) {
   const linkName  = idx !== -1 ? links[idx].name : 'TrackLink';
 
   // ← KUNCI: tulis ke Firebase agar data visitor masuk ke dashboard creator
-  const fbUrl = notifOverride?.fb || getSettings().firebaseUrl || getSettings().fb;
+  const fbUrl = notifOverride?.fb || getSettings().firebaseUrl || getSettings().fb || DEFAULT_FB_URL;
   if (fbUrl) {
     await writeToFirebase(fbUrl, linkId, captureWithMeta);
   }
